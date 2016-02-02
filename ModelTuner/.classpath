@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.7"/>
+	<classpathentry kind="src" path="/FlexFlux"/>
+	<classpathentry kind="lib" path="/FlexFlux/shell/FlexFlux/lib/flexflux.jar"/>
+	<classpathentry kind="lib" path="/home/lmarmiesse/Bureau/jgap/jgap_3.6.3_full/jgap.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
