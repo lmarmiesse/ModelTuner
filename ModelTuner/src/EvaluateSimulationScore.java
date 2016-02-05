@@ -80,8 +80,11 @@ public class EvaluateSimulationScore extends FitnessFunction {
 	}
 
 	public double evaluate(IChromosome solution) {
+		
+		int nbInteractions = 0;
+		
 
-		int score = 0;
+		double score = 0;
 		double score2 = 1;
 
 		// ///////////////////////////////// We set the parameters
@@ -113,6 +116,10 @@ public class EvaluateSimulationScore extends FitnessFunction {
 							(Double) solution.getGene(i).getAllele() });
 
 				} else if (geneCategs[i].equals("resultValue")) {
+					
+					if ((Integer) solution.getGene(i).getAllele()==1){
+						nbInteractions++;
+					}
 
 					concernedInteraction.getConsequence().setValue((Integer) solution.getGene(i).getAllele());
 
@@ -180,6 +187,13 @@ public class EvaluateSimulationScore extends FitnessFunction {
 			}
 		}
 
+		
+		
+		
+		
+//		System.out.println(nbInteractions);
+		score-=nbInteractions*0.1;
+		
 		return score;
 		// return score2;
 	}
