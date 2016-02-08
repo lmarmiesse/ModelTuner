@@ -41,14 +41,15 @@ public class EvaluateSimulationScore extends FitnessFunction {
 
 	public int nRefValues;
 
-	public String[] geneIds;
-	public String[] geneCategs;
+	public Parameter[] parameters;
+	public List<Forbidden> forbiddenCombinations;
 
 	// public String outFolder = "";
 
 	public Map<String, Interaction> geneIdToInteraction = new HashMap<String, Interaction>();
 
-	public EvaluateSimulationScore(String[] geneIds, String[] geneCategs, String regFile, String refFile) {
+	public EvaluateSimulationScore(Parameter[] parameters, List<Forbidden> forbiddenCombinations, String regFile,
+			String refFile) {
 
 		intNet_Col = SBMLQualReader.loadSbmlQual(regFile, new InteractionNetwork(), new RelationFactory());
 
@@ -56,22 +57,33 @@ public class EvaluateSimulationScore extends FitnessFunction {
 		// readReferenceFile(refFile_30ko, reference_30ko);
 		// readReferenceFile(refFile_96ko, reference_96ko);
 
-		this.geneIds = geneIds;
-		this.geneCategs = geneCategs;
+		this.parameters = parameters;
+		this.forbiddenCombinations = forbiddenCombinations;
 
 		// /// initialize gene to interactions
-		for (int i = 0; i < geneIds.length; i++) {
+		for (int i = 0; i < parameters.length; i++) {
 			for (BioEntity b : intNet_Col.getTargetToInteractions().keySet()) {
 
 				FFTransition fft = intNet_Col.getTargetToInteractions().get(b);
 
+				// for (Interaction inter : fft.getConditionalInteractions()) {
+				// if (inter.getName().equals(geneIds[i])) {
+				// geneIdToInteraction.put(geneIds[i], inter);
+				// }
+				// }
+				// if (fft.getdefaultInteraction().getName().equals(geneIds[i]))
+				// {
+				// geneIdToInteraction.put(geneIds[i],
+				// fft.getdefaultInteraction());
+				// }
+
 				for (Interaction inter : fft.getConditionalInteractions()) {
-					if (inter.getName().equals(geneIds[i])) {
-						geneIdToInteraction.put(geneIds[i], inter);
+					if (inter.getName().equals(parameters[i].getName())) {
+						geneIdToInteraction.put(parameters[i].getName(), inter);
 					}
 				}
-				if (fft.getdefaultInteraction().getName().equals(geneIds[i])) {
-					geneIdToInteraction.put(geneIds[i], fft.getdefaultInteraction());
+				if (fft.getdefaultInteraction().getName().equals(parameters[i].getName())) {
+					geneIdToInteraction.put(parameters[i].getName(), fft.getdefaultInteraction());
 				}
 
 			}
@@ -81,27 +93,74 @@ public class EvaluateSimulationScore extends FitnessFunction {
 
 	public double evaluate(IChromosome solution) {
 		
+		int nbForbidden = 0;
+
+		for (Forbidden forbidden : forbiddenCombinations) {
+
+			Parameter p1 = forbidden.getPar1();
+			double v1 = forbidden.getVal1();
+			Parameter p2 = forbidden.getPar2();
+			double v2 = forbidden.getVal1();
+
+			boolean firstTrue = false;
+			boolean secondTrue = false;
+
+			for (int i = 0; i < parameters.length; i++) {
+
+				if (parameters[i].getName().equals(p1.getName())) {
+					if (parameters[i].getCategory().equals("init") || parameters[i].getCategory().equals("resultValue")) {
+						if ((Integer) solution.getGene(i).getAllele() == v1) {
+							firstTrue = true;
+						}
+					}
+					else{
+						if ((Double) solution.getGene(i).getAllele() == v1) {
+							firstTrue = true;
+						}
+					}
+				}
+				if (parameters[i].getName().equals(p2.getName())) {
+					if (parameters[i].getCategory().equals("init") || parameters[i].getCategory().equals("resultValue")) {
+						if ((Integer) solution.getGene(i).getAllele() == v2) {
+							secondTrue = true;
+						}
+					}
+					else{
+						if ((Double) solution.getGene(i).getAllele() == v2) {
+							secondTrue = true;
+						}
+					}
+				}
+
+			}
+
+			if (firstTrue && secondTrue) {
+				
+				nbForbidden++;
+			}
+
+		}
+
 		int nbInteractions = 0;
-		
 
 		double score = 0;
 		double score2 = 1;
 
 		// ///////////////////////////////// We set the parameters
-		for (int i = 0; i < geneIds.length; i++) {
+		for (int i = 0; i < parameters.length; i++) {
 			// if the param concerns an entity
-			if (intNet_Col.getEntity(geneIds[i]) != null) {
-				if (geneCategs[i].equals("init")) {
-					intNet_Col.addInitialState(intNet_Col.getEntity(geneIds[i]),
+			if (intNet_Col.getEntity(parameters[i].getName()) != null) {
+				if (parameters[i].getCategory().equals("init")) {
+					intNet_Col.addInitialState(intNet_Col.getEntity(parameters[i].getName()),
 							(Integer) solution.getGene(i).getAllele());
 
 				}
 			}
 			// else it concerns an interaction
 			else {
-				Interaction concernedInteraction = geneIdToInteraction.get(geneIds[i]);
+				Interaction concernedInteraction = geneIdToInteraction.get(parameters[i].getName());
 
-				if (geneCategs[i].equals("delay")) {
+				if (parameters[i].getCategory().equals("delay")) {
 
 					// System.out.println(geneIds[i]);
 					// System.out.println(concernedInteraction);
@@ -110,14 +169,14 @@ public class EvaluateSimulationScore extends FitnessFunction {
 					concernedInteraction.setTimeInfos(new double[] { (Double) solution.getGene(i).getAllele(),
 							concernedInteraction.getTimeInfos()[1] });
 
-				} else if (geneCategs[i].equals("lasts")) {
+				} else if (parameters[i].getCategory().equals("lasts")) {
 
 					concernedInteraction.setTimeInfos(new double[] { concernedInteraction.getTimeInfos()[0],
 							(Double) solution.getGene(i).getAllele() });
 
-				} else if (geneCategs[i].equals("resultValue")) {
-					
-					if ((Integer) solution.getGene(i).getAllele()==1){
+				} else if (parameters[i].getCategory().equals("resultValue")) {
+
+					if ((Integer) solution.getGene(i).getAllele() == 1) {
 						nbInteractions++;
 					}
 
@@ -125,7 +184,7 @@ public class EvaluateSimulationScore extends FitnessFunction {
 
 				} else {
 
-					System.out.println("ERROR : " + geneCategs[i] + " is unknown");
+					System.out.println("ERROR : " + parameters[i].getCategory() + " is unknown");
 				}
 
 				// System.out.println(geneIds[i]);
@@ -187,14 +246,20 @@ public class EvaluateSimulationScore extends FitnessFunction {
 			}
 		}
 
+		// System.out.println(nbInteractions);
+		score -= nbInteractions * 0.1;
 		
 		
+		//
+		double newScore = score;
+//		System.out.println("Nombre de forbidden :"+nbForbidden);
+		for (int i=0;i<nbForbidden;i++){
+			newScore-=newScore/10;
+		}
 		
-		
-//		System.out.println(nbInteractions);
-		score-=nbInteractions*0.1;
-		
-		return score;
+//		System.out.println(score + " => "+ newScore);
+
+		return newScore;
 		// return score2;
 	}
 
@@ -202,36 +267,36 @@ public class EvaluateSimulationScore extends FitnessFunction {
 			throws FileNotFoundException, UnsupportedEncodingException {
 
 		// ///////////////////////////////// We set the parameters
-		for (int i = 0; i < geneIds.length; i++) {
+		for (int i = 0; i < parameters.length; i++) {
 			// if the param concerns an entity
-			if (intNet_Col.getEntity(geneIds[i]) != null) {
-				if (geneCategs[i].equals("init")) {
-					intNet_Col.addInitialState(intNet_Col.getEntity(geneIds[i]),
+			if (intNet_Col.getEntity(parameters[i].getName()) != null) {
+				if (parameters[i].getCategory().equals("init")) {
+					intNet_Col.addInitialState(intNet_Col.getEntity(parameters[i].getName()),
 							(Integer) solution.getGene(i).getAllele());
 
 				}
 			}
 			// else it concerns an interaction
 			else {
-				Interaction concernedInteraction = geneIdToInteraction.get(geneIds[i]);
+				Interaction concernedInteraction = geneIdToInteraction.get(parameters[i].getName());
 
-				if (geneCategs[i].equals("delay")) {
+				if (parameters[i].getCategory().equals("delay")) {
 
 					concernedInteraction.setTimeInfos(new double[] { (Double) solution.getGene(i).getAllele(),
 							concernedInteraction.getTimeInfos()[1] });
 
-				} else if (geneCategs[i].equals("lasts")) {
+				} else if (parameters[i].getCategory().equals("lasts")) {
 
 					concernedInteraction.setTimeInfos(new double[] { concernedInteraction.getTimeInfos()[0],
 							(Double) solution.getGene(i).getAllele() });
 
-				} else if (geneCategs[i].equals("resultValue")) {
+				} else if (parameters[i].getCategory().equals("resultValue")) {
 
 					concernedInteraction.getConsequence().setValue((Integer) solution.getGene(i).getAllele());
 
 				} else {
 
-					System.out.println("ERROR : " + geneCategs[i] + " is unknown");
+					System.out.println("ERROR : " + parameters[i].getCategory() + " is unknown");
 				}
 
 				// System.out.println(geneIds[i]);

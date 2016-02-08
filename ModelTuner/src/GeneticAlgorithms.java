@@ -24,19 +24,18 @@ import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 
-import flexflux.thread.ResolveThread;
-
 public class GeneticAlgorithms {
 
 	public CmdLineParser parser;
 
 	static Gene[] sampleGenes;
-	static String[] geneIds;
-	static String[] geneCategs;
+	static Parameter[] parameters;
 	// static String paramFile =
 	// "/run/user/91148/gvfs/sftp:host=147.100.166.10,user=lmarmiesse/home/users/GRP_DR/lmarmiesse/Documents/Modelling/Interaction/myb_regulatory_networks/parameters.txt";
 	// static String paramFile =
 	// "/run/user/91148/gvfs/sftp:host=147.100.166.10,user=lmarmiesse/home/users/GRP_DR/lmarmiesse/Documents/Modelling/Interaction/myb_regulatory_networks/parameters/2-parameters_myb_CER4.txt";
+
+	static List<Forbidden> forbiddenCombinations;
 
 	static Configuration conf;
 
@@ -120,8 +119,8 @@ public class GeneticAlgorithms {
 		final List<IChromosome> bestResultsOverAll = new ArrayList<IChromosome>();
 
 		for (int threadNumber = 0; threadNumber < numThreads; threadNumber++) {
-			
-			System.out.println("Thread "+threadNumber);
+
+			System.out.println("Thread " + threadNumber);
 
 			final int j = threadNumber;
 
@@ -131,7 +130,8 @@ public class GeneticAlgorithms {
 
 			readParameters(paramFile);
 
-			final EvaluateSimulationScore myFunc = new EvaluateSimulationScore(geneIds, geneCategs, regFile, refFile);
+			final EvaluateSimulationScore myFunc = new EvaluateSimulationScore(parameters, forbiddenCombinations,
+					regFile, refFile);
 
 			conf.setFitnessFunction(myFunc);
 
@@ -230,7 +230,8 @@ public class GeneticAlgorithms {
 
 		System.out.println("Best score = " + bestScore);
 
-		EvaluateSimulationScore myFunc = new EvaluateSimulationScore(geneIds, geneCategs, regFile, refFile);
+		EvaluateSimulationScore myFunc = new EvaluateSimulationScore(parameters, forbiddenCombinations, regFile,
+				refFile);
 
 		myFunc.seeSolutionOutput(bestCr, outFolder);
 
@@ -268,10 +269,10 @@ public class GeneticAlgorithms {
 
 	private static void readParameters(String path) throws InvalidConfigurationException {
 
-		
-		System.out.println("Param file : "+path);
+		System.out.println("Param file : " + path);
 
 		List<String> params = new ArrayList<String>();
+		List<String> forbidden = new ArrayList<String>();
 
 		try {
 
@@ -281,7 +282,13 @@ public class GeneticAlgorithms {
 			while ((line = in.readLine()) != null) {
 				if (line.startsWith("#") || line.equals("")) {
 					continue;
+				} else if (line.startsWith("forbidden")) {
+
+					forbidden.add(line);
+					continue;
+
 				}
+
 				params.add(line);
 			}
 
@@ -296,13 +303,12 @@ public class GeneticAlgorithms {
 		}
 
 		sampleGenes = new Gene[params.size()];
-		geneIds = new String[params.size()];
-		geneCategs = new String[params.size()];
+		parameters = new Parameter[params.size()];
 
 		int index = 0;
 		for (String par : params) {
 
-//			System.out.println(par);
+			// System.out.println(par);
 
 			String id = par.split("\t")[0];
 			String categ = par.split("\t")[1];
@@ -316,13 +322,54 @@ public class GeneticAlgorithms {
 				sampleGenes[index] = new IntegerGene(conf, Integer.parseInt(lb), Integer.parseInt(ub));
 			}
 
-			geneIds[index] = id;
-			geneCategs[index] = categ;
+			parameters[index] = new Parameter(id, categ, type, Double.parseDouble(lb), Double.parseDouble(ub));
 
 			index++;
 		}
-		
-		System.out.println(params.size()+" parameters.");
+
+		forbiddenCombinations = new ArrayList<>();
+
+		index = 0;
+		for (String forb : forbidden) {
+
+			System.out.println(forb);
+
+			// String id = par.split("\t")[0];
+			String param1 = forb.split("\t")[1];
+			String val1 = forb.split("\t")[2];
+			String param2 = forb.split("\t")[3];
+			String val2 = forb.split("\t")[4];
+
+			Parameter p1 = null;
+			Parameter p2 = null;
+
+			for (Parameter p : parameters) {
+				if (p.getName().equals(param1)) {
+					p1 = p;
+				}
+				if (p.getName().equals(param2)) {
+					p2 = p;
+				}
+			}
+
+			if (p1 == null || p2 == null) {
+
+				System.err.println("Error in line: " + forb + ", a parameter is not known");
+				System.exit(0);
+			}
+
+			try {
+				forbiddenCombinations.add(new Forbidden(p1, Double.parseDouble(val1), p2, Double.parseDouble(val2)));
+			} catch (NumberFormatException e) {
+				System.err.println("Error in line: " + forb + ", a number is not well formated.");
+				System.exit(0);
+			}
+
+			// index++;
+		}
+
+		System.out.println(params.size() + " parameters.");
+		System.out.println(forbidden.size() + " forbidden.");
 
 	}
 
@@ -354,7 +401,7 @@ public class GeneticAlgorithms {
 
 			if (candidat.getFitnessValue() > bestResultsOverAll.get(0).getFitnessValue()) {
 				int index = 0;
-				
+
 				boolean isAdded = false;
 				for (IChromosome chr : bestResultsOverAll) {
 					if (candidat.getFitnessValue() < chr.getFitnessValue()) {
