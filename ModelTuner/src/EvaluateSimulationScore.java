@@ -6,9 +6,14 @@ import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.apache.commons.lang.StringUtils;
 import org.jgap.FitnessFunction;
 import org.jgap.IChromosome;
 
@@ -43,6 +48,8 @@ public class EvaluateSimulationScore extends FitnessFunction {
 
 	public Parameter[] parameters;
 	public List<Forbidden> forbiddenCombinations;
+
+	public Set<BioEntity> varsResValueCanChange = new HashSet<BioEntity>();
 
 	// public String outFolder = "";
 
@@ -80,10 +87,18 @@ public class EvaluateSimulationScore extends FitnessFunction {
 				for (Interaction inter : fft.getConditionalInteractions()) {
 					if (inter.getName().equals(parameters[i].getName())) {
 						geneIdToInteraction.put(parameters[i].getName(), inter);
+
+						if (parameters[i].getCategory().equals("resultValue")) {
+							varsResValueCanChange.add(b);
+						}
 					}
 				}
 				if (fft.getdefaultInteraction().getName().equals(parameters[i].getName())) {
 					geneIdToInteraction.put(parameters[i].getName(), fft.getdefaultInteraction());
+
+					if (parameters[i].getCategory().equals("resultValue")) {
+						varsResValueCanChange.add(b);
+					}
 				}
 
 			}
@@ -92,7 +107,7 @@ public class EvaluateSimulationScore extends FitnessFunction {
 	}
 
 	public double evaluate(IChromosome solution) {
-		
+
 		int nbForbidden = 0;
 
 		for (Forbidden forbidden : forbiddenCombinations) {
@@ -100,7 +115,7 @@ public class EvaluateSimulationScore extends FitnessFunction {
 			Parameter p1 = forbidden.getPar1();
 			double v1 = forbidden.getVal1();
 			Parameter p2 = forbidden.getPar2();
-			double v2 = forbidden.getVal1();
+			double v2 = forbidden.getVal2();
 
 			boolean firstTrue = false;
 			boolean secondTrue = false;
@@ -108,24 +123,24 @@ public class EvaluateSimulationScore extends FitnessFunction {
 			for (int i = 0; i < parameters.length; i++) {
 
 				if (parameters[i].getName().equals(p1.getName())) {
-					if (parameters[i].getCategory().equals("init") || parameters[i].getCategory().equals("resultValue")) {
+					if (parameters[i].getCategory().equals("init")
+							|| parameters[i].getCategory().equals("resultValue")) {
 						if ((Integer) solution.getGene(i).getAllele() == v1) {
 							firstTrue = true;
 						}
-					}
-					else{
+					} else {
 						if ((Double) solution.getGene(i).getAllele() == v1) {
 							firstTrue = true;
 						}
 					}
 				}
 				if (parameters[i].getName().equals(p2.getName())) {
-					if (parameters[i].getCategory().equals("init") || parameters[i].getCategory().equals("resultValue")) {
+					if (parameters[i].getCategory().equals("init")
+							|| parameters[i].getCategory().equals("resultValue")) {
 						if ((Integer) solution.getGene(i).getAllele() == v2) {
 							secondTrue = true;
 						}
-					}
-					else{
+					} else {
 						if ((Double) solution.getGene(i).getAllele() == v2) {
 							secondTrue = true;
 						}
@@ -135,13 +150,11 @@ public class EvaluateSimulationScore extends FitnessFunction {
 			}
 
 			if (firstTrue && secondTrue) {
-				
+
 				nbForbidden++;
 			}
 
 		}
-
-		int nbInteractions = 0;
 
 		double score = 0;
 		double score2 = 1;
@@ -162,10 +175,6 @@ public class EvaluateSimulationScore extends FitnessFunction {
 
 				if (parameters[i].getCategory().equals("delay")) {
 
-					// System.out.println(geneIds[i]);
-					// System.out.println(concernedInteraction);
-					// System.out.println("__________");
-
 					concernedInteraction.setTimeInfos(new double[] { (Double) solution.getGene(i).getAllele(),
 							concernedInteraction.getTimeInfos()[1] });
 
@@ -175,10 +184,6 @@ public class EvaluateSimulationScore extends FitnessFunction {
 							(Double) solution.getGene(i).getAllele() });
 
 				} else if (parameters[i].getCategory().equals("resultValue")) {
-
-					if ((Integer) solution.getGene(i).getAllele() == 1) {
-						nbInteractions++;
-					}
 
 					concernedInteraction.getConsequence().setValue((Integer) solution.getGene(i).getAllele());
 
@@ -192,6 +197,10 @@ public class EvaluateSimulationScore extends FitnessFunction {
 			}
 
 		}
+
+		int nbInteractions = countNumberOfRequiredInteraction(solution);
+		
+//		System.out.println(nbInteractions);
 
 		// Init simulation values should be steady state values//
 
@@ -247,20 +256,66 @@ public class EvaluateSimulationScore extends FitnessFunction {
 		}
 
 		// System.out.println(nbInteractions);
-		score -= nbInteractions * 0.1;
-		
-		
-		//
+		score -= nbInteractions * 0.2;
+
+		// -10% score per forbidden combination of parameter values
 		double newScore = score;
-//		System.out.println("Nombre de forbidden :"+nbForbidden);
-		for (int i=0;i<nbForbidden;i++){
-			newScore-=newScore/10;
+		for (int i = 0; i < nbForbidden; i++) {
+			newScore -= newScore / 10;
 		}
-		
-//		System.out.println(score + " => "+ newScore);
 
 		return newScore;
 		// return score2;
+	}
+
+	private int countNumberOfRequiredInteraction(IChromosome solution) {
+
+		int nbRequiredInters = 0;
+
+		for (BioEntity b : varsResValueCanChange) {
+
+			if (!b.getId().contains("_")) {
+
+				FFTransition fft = intNet_Col.getTargetToInteractions().get(b);
+
+				int minNbInter = 10;
+				// determine the number of requires inputs
+
+				// get the min number of 1s
+				for (Interaction inter : fft.getConditionalInteractions()) {
+					if (inter.getConsequence().getValue() == 1.0) {
+						int nb = StringUtils.countMatches(inter.getCondition().toString(), "= 1");
+						if (nb < minNbInter) {
+							minNbInter = nb;
+						}
+					}
+				}
+				
+				Set<String> inputs = new HashSet<String>();
+
+				// count the number of activators
+				for (Interaction inter : fft.getConditionalInteractions()) {
+					if (inter.getConsequence().getValue() == 1.0) {
+
+						int nb = StringUtils.countMatches(inter.getCondition().toString(), "= 1");
+						if (nb == minNbInter) {
+							
+							Pattern r = Pattern.compile("(\\w+) = 1.0");
+							Matcher m = r.matcher(inter.getCondition().toString());
+							while (m.find()) {
+								inputs.add(m.group(1));
+							} 
+
+						}
+					}
+				}
+				
+				nbRequiredInters+=inputs.size();
+			}
+
+		}
+
+		return nbRequiredInters;
 	}
 
 	public void seeSolutionOutput(IChromosome solution, String outFolder)
