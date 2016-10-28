@@ -47,13 +47,23 @@ public class EvaluateSimulationScore extends FitnessFunction {
 	public int nRefValues;
 
 	public Parameter[] parameters;
-	public List<Forbidden> forbiddenCombinations;
+	public List<Forbidden> forbiddenCombinations = new ArrayList<Forbidden>();
 
 	public Set<BioEntity> varsResValueCanChange = new HashSet<BioEntity>();
 
 	// public String outFolder = "";
 
 	public Map<String, Interaction> geneIdToInteraction = new HashMap<String, Interaction>();
+
+	public EvaluateSimulationScore(String regFile, String refFile) {
+
+		intNet_Col = SBMLQualReader.loadSbmlQual(regFile, new InteractionNetwork(), new RelationFactory());
+
+		readReferenceFile(refFile, reference_Col);
+		
+		parameters = new Parameter[0];
+
+	}
 
 	public EvaluateSimulationScore(Parameter[] parameters, List<Forbidden> forbiddenCombinations, String regFile,
 			String refFile) {
@@ -199,8 +209,8 @@ public class EvaluateSimulationScore extends FitnessFunction {
 		}
 
 		int nbInteractions = countNumberOfRequiredInteraction(solution);
-		
-//		System.out.println(nbInteractions);
+
+		// System.out.println(nbInteractions);
 
 		// Init simulation values should be steady state values//
 
@@ -264,22 +274,24 @@ public class EvaluateSimulationScore extends FitnessFunction {
 			newScore -= newScore / 10;
 		}
 
+		
 		return newScore;
 		// return score2;
 	}
 
 	private int countNumberOfRequiredInteraction(IChromosome solution) {
 
+		
 		int nbRequiredInters = 0;
 
 		for (BioEntity b : varsResValueCanChange) {
-
+			
 			if (!b.getId().contains("_")) {
 
 				FFTransition fft = intNet_Col.getTargetToInteractions().get(b);
 
 				int minNbInter = 10;
-				// determine the number of requires inputs
+				// determine the number of required inputs
 
 				// get the min number of 1s
 				for (Interaction inter : fft.getConditionalInteractions()) {
@@ -290,7 +302,7 @@ public class EvaluateSimulationScore extends FitnessFunction {
 						}
 					}
 				}
-				
+
 				Set<String> inputs = new HashSet<String>();
 
 				// count the number of activators
@@ -299,18 +311,18 @@ public class EvaluateSimulationScore extends FitnessFunction {
 
 						int nb = StringUtils.countMatches(inter.getCondition().toString(), "= 1");
 						if (nb == minNbInter) {
-							
+
 							Pattern r = Pattern.compile("(\\w+) = 1.0");
 							Matcher m = r.matcher(inter.getCondition().toString());
 							while (m.find()) {
 								inputs.add(m.group(1));
-							} 
+							}
 
 						}
 					}
 				}
-				
-				nbRequiredInters+=inputs.size();
+
+				nbRequiredInters += inputs.size();
 			}
 
 		}
